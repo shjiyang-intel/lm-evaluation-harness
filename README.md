@@ -1,3 +1,28 @@
+# How to evaluate on NPU with OpenVINO GenAI
+
+Download [optimum-intel](https://github.com/shjiyang-intel/optimum-intel) that support GenAI backend, install it in local python env.
+```
+python -m pip install .
+```
+
+Install harness in local python env
+```
+python -m pip install -e .
+```
+
+Run `lm_eval` with OpenVINO GenAI backend!
+
+```
+lm_eval --model openvino_genai --model_args pretrained=TinyLlama-1.1B-Chat-v1.0 --tasks ifeval --device NPU
+```
+
+**Note**
+
+- GenAI backend support NPU only right now, please do not run harness on GPU with GenAI.
+- Supported tasks: `MMLU-Pro` , `GSM8K`, `IFEval`, `truthfulqa_gen`
+
+
+
 # Language Model Evaluation Harness
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10256836.svg)](https://doi.org/10.5281/zenodo.10256836)
