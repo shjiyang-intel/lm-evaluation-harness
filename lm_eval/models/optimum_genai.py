@@ -90,13 +90,9 @@ class OptimumGenAILM(HFLM):
                                                max_new_tokens=0,
                                                do_sample=True)
 
-            whole_enc = self.ov_tokenizer.encode(context + continuation)
+            whole_enc = self.ov_tokenizer.encode(context + continuation, max_length=self._model_config["MAX_PROMPT_LEN"])
             inp_ids = whole_enc.input_ids
             whole_enc_len = inp_ids.shape[1]
-
-            # Note: in latest OV, there is no need to fix the tokenizer input length for npu
-            # if self.openvino_device == "NPU":
-            #     whole_enc = self.ov_tokenizer.encode(context + continuation, max_length=self._model_config["MAX_PROMPT_LEN"], pad_to_max_length=True)
 
             context_enc = self.ov_tokenizer.encode(context)
             context_enc_len = context_enc.input_ids.shape[1]
@@ -104,7 +100,6 @@ class OptimumGenAILM(HFLM):
             output, score, logprobs = self._model(whole_enc, generation_config=generation_config)
 
             cont_logits = logprobs[context_enc_len: whole_enc_len]    
-            print('cont_logits: ', cont_logits)            
             # MultipleChoiceTask process_results discard is_greedy anyway
             res.append((sum(cont_logits), False))
 
@@ -188,3 +183,4 @@ class OptimumGenAILM(HFLM):
         
         pbar.close()
         return res 
+    

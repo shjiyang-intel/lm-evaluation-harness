@@ -1,6 +1,6 @@
 # How to evaluate on NPU with OpenVINO GenAI
 
-Download [optimum-intel](https://github.com/shjiyang-intel/optimum-intel) that support GenAI backend, install it in local python env.
+Download [optimum-intel](https://github.com/shjiyang-intel/optimum-intel/tree/mmlu) that support GenAI backend, install it in local python env.
 ```
 python -m pip install .
 ```
@@ -18,22 +18,24 @@ lm_eval --model openvino_genai --model_args pretrained=TinyLlama-1.1B-Chat-v1.0 
 
 Alternatively
 
-- Provide configs to generation config:
+- Provide configs to LLM Model, default `max_prompt_len=1024,min_response_len=150`
+```
+lm_eval --model openvino_genai --model_args pretrained=DeepSeek-R1-Distill-Qwen-1.5B,max_prompt_len=2048,min_response_len=200 --tasks mmlu_pro_history --device NPU
+```
+
+- Provide configs to generation config.
+
+> note: Only works in `generate_until` function in Harness, if your task uses `loglikelihood` to calculate accuracy, currently, there is no way to pass them.
 
 ```
 lm_eval --model openvino_genai --model_args pretrained=DeepSeek-R1-Distill-Qwen-1.5B --gen_kwargs temperature=0.6,do_sample=True,top_p=0.95,eos_token_id=151643 --tasks mmlu_pro_history --device NPU
-```
-
-- Provide configs to LLM Model, defualt `max_prompt_len=1024,min_response_len=150`
-```
-lm_eval --model openvino_genai --model_args pretrained=DeepSeek-R1-Distill-Qwen-1.5B,max_prompt_len=2048,min_response_len=200 --tasks mmlu_pro_history --device NPU
 ```
 
 
 **Note**
 
 - GenAI backend support NPU only right now, please do not run harness on GPU with GenAI.
-- Supported tasks: `MMLU-Pro` , `GSM8K`, `IFEval`, `truthfulqa_gen`
+- Supported tasks: `MMLU-Pro` , `GSM8K`, `IFEval`, `truthfulqa_gen`, `MMLU`
 
 
 
