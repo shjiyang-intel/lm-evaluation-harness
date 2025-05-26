@@ -5,6 +5,8 @@ from typing import List, Optional
 import copy
 from tqdm import tqdm
 
+from openvino_genai import TokenizedInputs, GenerationConfig
+from openvino import Tensor
 from lm_eval.api.registry import register_model
 from lm_eval.models.huggingface import HFLM
 from lm_eval.api.instance import Instance
@@ -27,9 +29,6 @@ class OptimumGenAILM(HFLM):
         config=None,
         **kwargs,
     ) -> None:
-        # Define config as a class attribute first
-        self._config = config if config is not None else {}
-        
         if "backend" in kwargs:
             # currently only supports causal models
             assert kwargs["backend"] == "causal", (
@@ -43,14 +42,6 @@ class OptimumGenAILM(HFLM):
             backend=kwargs.pop("backend", "causal"),
             **kwargs,
         )
-
-    @property
-    def config(self):
-        return self._config
-
-    @config.setter
-    def config(self, value):
-        self._config = value
 
     def _create_model(
         self,
@@ -73,39 +64,50 @@ class OptimumGenAILM(HFLM):
             from optimum.intel.openvino_genai.modeling_base import OpenVINOGenAIModelForCausalLM
 
         model_kwargs = {}
-        model_kwargs["config"] = self.config
 
-        # follow openvino GenAI defualt value
+        # FIXME: add a transfer function to convert all relevant args to GenAI config
         model_kwargs["MAX_PROMPT_LEN"] = kwargs.pop("max_prompt_len", 1024)
         model_kwargs["MIN_RESPONSE_LEN"] = kwargs.pop("min_response_len", 150)
         for key, value in kwargs.items():
             model_kwargs[key] = value
         
-        # Initialize the model with proper parameters
         self._model = OpenVINOGenAIModelForCausalLM(
             model_path=pretrained,
             device=self.openvino_device,
             **model_kwargs,
         )
+
+        self.ov_tokenizer = self._model.ov_tokenizer
+        self._model_config = model_kwargs
     
+    # FIXME: extract loglikelihood_token 
     def loglikelihood(self, requests):
-        """
-        Return a fake loglikelihood value for evaluation purposes.
-        OpenVINO GenAI models are focused on generation and don't support loglikelihood calculation.
-        """
-        eval_logger.warning(
-            "OpenVINO GenAI models don't support loglikelihood calculation. Returning fake values."
-        )
-        
         res = []
         for request in requests:
-            context, continuation = request
-            # Return a fake loglikelihood value and fake is_greedy flag
-            # These values are not meaningful and should not be used for actual evaluation
-            fake_loglikelihood = -1.0  # Fake value
-            fake_is_greedy = True      # Fake value
-            res.append((fake_loglikelihood, fake_is_greedy))
-        
+            context, continuation = request.args
+            # FIXME:set max prompt length
+            generation_config = GenerationConfig(echo=True,
+                                               max_new_tokens=0,
+                                               do_sample=True)
+
+            whole_enc = self.ov_tokenizer.encode(context + continuation)
+            inp_ids = whole_enc.input_ids
+            whole_enc_len = inp_ids.shape[1]
+
+            # Note: in latest OV, there is no need to fix the tokenizer input length for npu
+            # if self.openvino_device == "NPU":
+            #     whole_enc = self.ov_tokenizer.encode(context + continuation, max_length=self._model_config["MAX_PROMPT_LEN"], pad_to_max_length=True)
+
+            context_enc = self.ov_tokenizer.encode(context)
+            context_enc_len = context_enc.input_ids.shape[1]
+
+            output, score, logprobs = self._model(whole_enc, generation_config=generation_config)
+
+            cont_logits = logprobs[context_enc_len: whole_enc_len]    
+            print('cont_logits: ', cont_logits)            
+            # MultipleChoiceTask process_results discard is_greedy anyway
+            res.append((sum(cont_logits), False))
+
         return res
 
     def loglikelihood_rolling(self, requests):
@@ -119,7 +121,7 @@ class OptimumGenAILM(HFLM):
         
         res = []
         for request in requests:
-            context, continuation = request
+            context, continuation = request.args
             # Return fake token loglikelihoods - one value per token in continuation
             fake_token_loglikelihoods = [-1.0] * len(continuation)  # Fake values
             res.append(fake_token_loglikelihoods)
@@ -163,30 +165,24 @@ class OptimumGenAILM(HFLM):
             else:
                 raise ValueError(f"Expected kwargs to be of type dict but got {type(gen_kwargs)}")
             
-            try:
-                # Set up generation parameters
-                generation_kwargs = {
-                    "max_new_tokens": max_gen_toks,
-                    "stop_strings": set(stop_strings),
-                }
-                
-                # Add any other parameters from kwargs that are supported by OpenVINO GenAI
-                for k, v in kwargs.items():
-                    if k not in generation_kwargs:
-                        generation_kwargs[k] = v
+            generation_kwargs = {
+                "max_new_tokens": max_gen_toks,
+                "stop_strings": set(stop_strings),
+            }
+            
+            # Add any other parameters from kwargs that are supported by OpenVINO GenAI
+            for k, v in kwargs.items():
+                if k not in generation_kwargs:
+                    generation_kwargs[k] = v
 
-                generated_text = self._model.generate(
-                    context,
-                    **generation_kwargs
-                )
-                    
-                res.append(generated_text)
+            generated_text = self._model.generate(
+                context,
+                **generation_kwargs
+            )
                 
-                self.cache_hook.add_partial("generate_until", (context, gen_kwargs), generated_text)
-                
-            except Exception as e:
-                eval_logger.error(f"Error during generation: {e}")
-                res.append("")
+            res.append(generated_text)
+            
+            self.cache_hook.add_partial("generate_until", (context, gen_kwargs), generated_text)
             
             pbar.update(1)
         

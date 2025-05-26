@@ -1206,7 +1206,6 @@ class HFLM(TemplateLM):
                     "attn_mask": batched_encoder_mask,
                     "labels": batched_conts,
                 }
-
             multi_logits = F.log_softmax(
                 self._model_call(batched_inps, **call_kwargs),
                 dim=-1,
