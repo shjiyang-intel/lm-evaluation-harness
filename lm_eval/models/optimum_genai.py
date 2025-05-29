@@ -81,8 +81,15 @@ class OptimumGenAILM(HFLM):
         self._model_config = model_kwargs
     
     # FIXME: extract loglikelihood_token 
-    def loglikelihood(self, requests):
+    def loglikelihood(self, requests, disable_tqdm: bool = False):
         res = []
+        # Create progress bar
+        pbar = tqdm(
+            total=len(requests),
+            disable=(disable_tqdm or (self.rank != 0)),
+            desc="Running OpenVINO GenAI generation requests",
+        )
+
         for request in requests:
             context, continuation = request.args
             # FIXME:set max prompt length
@@ -102,6 +109,9 @@ class OptimumGenAILM(HFLM):
             cont_logits = logprobs[context_enc_len: whole_enc_len]    
             # MultipleChoiceTask process_results discard is_greedy anyway
             res.append((sum(cont_logits), False))
+            pbar.update(1)
+        
+        pbar.close()
 
         return res
 
