@@ -34,7 +34,7 @@ lm_eval --model openvino_genai --model_args pretrained=DeepSeek-R1-Distill-Qwen-
 
 **Note**
 
-- GenAI backend support NPU only right now, please do not run harness on GPU with GenAI.
+- GenAI support NPU and GPU both with GenAI. Default you could install public/nightly OpenVINO archieves/wheel, but if your task requires `loglikelihood`, please build OpenVINO/GenAI from resource [shjiyang-intel/openvino](https://github.com/shjiyang-intel/openvino). See more in [build.md](./build.md)
 - Supported tasks: `MMLU-Pro` , `GSM8K`, `IFEval`, `truthfulqa_gen`, `MMLU`
 
 
